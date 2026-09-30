@@ -1,0 +1,332 @@
+-- Load Orion Library untuk UI
+local OrionLib = loadstring(game:HttpGet('https://raw.githubusercontent.com/shlexware/Orion/main/source'))()
+local Window = OrionLib:MakeWindow({Name = "Hyper Shot | Delta Hub Pro", HidePremium = false, SaveConfig = true, ConfigFolder = "HyperShotConfigPro"})
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
+
+-- State Pengaturan
+local Settings = {
+    AutoAim = false,
+    AutoShoot = false,
+    AutoSkill = false,
+    AimPart = "Head",
+    FlyEnabled = false,
+    FlySpeed = 50,
+    WalkSpeed = 16,
+    TargetUsername = "",
+    -- ESP Settings
+    ESPBox = false,
+    ESPName = false,
+    ESPLine = false,
+    ESPHealth = false
+}
+
+-- Tabel untuk menyimpan objek ESP pemain
+local ESPObjects = {}
+
+local function createESP(player)
+    if player == LocalPlayer then return end
+    
+    local esp = {
+        Box = Drawing.new("Square"),
+        Name = Drawing.new("Text"),
+        Line = Drawing.new("Line"),
+        HealthBar = Drawing.new("Square"),
+        HealthBarBg = Drawing.new("Square")
+    }
+    
+    -- Konfigurasi Visual ESP
+    esp.Box.Visible = false
+    esp.Box.Thickness = 1
+    esp.Box.Color = Color3.fromRGB(255, 0, 0)
+    esp.Box.Filled = false
+    
+    esp.Name.Visible = false
+    esp.Name.Size = 14
+    esp.Name.Center = true
+    esp.Name.Outline = true
+    esp.Name.Color = Color3.fromRGB(255, 255, 255)
+    
+    esp.Line.Visible = false
+    esp.Line.Thickness = 1
+    esp.Line.Color = Color3.fromRGB(255, 0, 0)
+    
+    esp.HealthBarBg.Visible = false
+    esp.HealthBarBg.Thickness = 1
+    esp.HealthBarBg.Filled = true
+    esp.HealthBarBg.Color = Color3.fromRGB(0, 0, 0)
+    
+    esp.HealthBar.Visible = false
+    esp.HealthBar.Thickness = 1
+    esp.HealthBar.Filled = true
+    esp.HealthBar.Color = Color3.fromRGB(0, 255, 0)
+    
+    ESPObjects[player] = esp
+end
+
+local function removeESP(player)
+    if ESPObjects[player] then
+        for _, obj in pairs(ESPObjects[player]) do
+            pcall(function() obj:Remove() end)
+        end
+        ESPObjects[player] = nil
+    end
+end
+
+-- Inisialisasi Player saat ini & baru masuk
+for _, player in pairs(Players:GetPlayers()) do createESP(player) end
+Players.PlayerAdded:Connect(createESP)
+Players.PlayerRemoving:Connect(removeESP)
+
+--- 1. TAB: COMBAT & AUTO SKILL ---
+local CombatTab = Window:MakeTab({Name = "Combat", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+
+CombatTab:AddToggle({
+    Name = "Auto Aim",
+    Default = false,
+    Callback = function(Value) Settings.AutoAim = Value end
+})
+
+CombatTab:AddToggle({
+    Name = "Auto Shoot",
+    Default = false,
+    Callback = function(Value) Settings.AutoShoot = Value end
+})
+
+CombatTab:AddToggle({
+    Name = "Auto Skill (Otomatis Aktifkan Skill)",
+    Default = false,
+    Callback = function(Value) Settings.AutoSkill = Value end
+})
+
+CombatTab:AddDropdown({
+    Name = "Aim Target Part",
+    Default = "Head",
+    Options = {"Head", "Body"},
+    Callback = function(Value)
+        Settings.AimPart = (Value == "Body") and "HumanoidRootPart" or "Head"
+    end
+})
+
+--- 2. TAB: VISUAL / ESP ---
+local EspTab = Window:MakeTab({Name = "Visual & ESP", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+
+EspTab:AddToggle({
+    Name = "ESP Box (Kotak Lawan)",
+    Default = false,
+    Callback = function(Value) Settings.ESPBox = Value end
+})
+
+EspTab:AddToggle({
+    Name = "ESP Name (Nama Lawan)",
+    Default = false,
+    Callback = function(Value) Settings.ESPName = Value end
+})
+
+EspTab:AddToggle({
+    Name = "ESP Line (Garis ke Lawan)",
+    Default = false,
+    Callback = function(Value) Settings.ESPLine = Value end
+})
+
+EspTab:AddToggle({
+    Name = "ESP Health Bar (Darah Lawan)",
+    Default = false,
+    Callback = function(Value) Settings.ESPHealth = Value end
+})
+
+--- 3. TAB: MOVEMENT (Fly & Speed) ---
+local MovementTab = Window:MakeTab({Name = "Movement", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+
+MovementTab:AddToggle({
+    Name = "Fly (Penerbangan)",
+    Default = false,
+    Callback = function(Value)
+        Settings.FlyEnabled = Value
+        local character = LocalPlayer.Character
+        if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+        
+        if Settings.FlyEnabled then
+            task.spawn(function()
+                local hrp = character.HumanoidRootPart
+                local bv = Instance.new("BodyVelocity")
+                bv.Name = "FlyVelocity"
+                bv.Parent = hrp
+                bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                
+                while Settings.FlyEnabled and character and character:FindFirstChild("HumanoidRootPart") do
+                    local moveDir = Vector3.new()
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + Camera.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - Camera.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - Camera.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + Camera.CFrame.RightVector end
+                    
+                    bv.Velocity = moveDir * Settings.FlySpeed
+                    task.wait()
+                end
+                if bv then bv:Destroy() end
+            end)
+        else
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            if hrp and hrp:FindFirstChild("FlyVelocity") then hrp.FlyVelocity:Destroy() end
+        end
+    end
+})
+
+MovementTab:AddSlider({
+    Name = "Fly Speed",
+    Min = 10, Max = 200, Default = 50, Color = Color3.fromRGB(255,255,255), Increment = 5, ValueName = "Speed",
+    Callback = function(Value) Settings.FlySpeed = Value end
+})
+
+MovementTab:AddSlider({
+    Name = "WalkSpeed",
+    Min = 16, Max = 150, Default = 16, Color = Color3.fromRGB(255,255,255), Increment = 1, ValueName = "Speed",
+    Callback = function(Value)
+        Settings.WalkSpeed = Value
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+            LocalPlayer.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = Value
+        end
+    end
+})
+
+--- 4. TAB: AVATAR TOOLS ---
+local FunTab = Window:MakeTab({Name = "Avatar Tools", Icon = "rbxassetid://4483345998", PremiumOnly = false})
+
+FunTab:AddTextbox({
+    Name = "Target Username (USN)",
+    Default = "",
+    TextDisappear = false,
+    Callback = function(Value) Settings.TargetUsername = Value end
+})
+
+FunTab:AddButton({
+    Name = "Clone Avatar Target",
+    Callback = function()
+        pcall(function()
+            local targetPlayer = Players:FindFirstChild(Settings.TargetUsername)
+            if targetPlayer and targetPlayer.Character then
+                local myChar = LocalPlayer.Character
+                if myChar then
+                    local targetDesc = targetPlayer.Character:FindFirstChildOfClass("Humanoid"):GetAppliedDescription()
+                    myChar:FindFirstChildOfClass("Humanoid"):ApplyDescription(targetDesc)
+                    OrionLib:MakeNotification({Name = "Berhasil", Content = "Clone avatar " .. Settings.TargetUsername, Time = 3})
+                end
+            else
+                OrionLib:MakeNotification({Name = "Error", Content = "Player tidak ditemukan!", Time = 3})
+            end
+        end)
+    end
+})
+
+--- LOGIKA UTAMA (RenderStepped Loop) ---
+RunService.RenderStepped:Connect(function()
+    -- 1. Auto Aim Logic
+    if Settings.AutoAim then
+        local closestTarget = nil
+        local shortestDistance = math.huge
+        
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+                local targetPart = player.Character:FindFirstChild(Settings.AimPart)
+                if targetPart then
+                    local screenPoint, onScreen = Camera:WorldToScreenPoint(targetPart.Position)
+                    local mousePos = UserInputService:GetMouseLocation()
+                    local distance = (Vector2.new(screenPoint.X, screenPoint.Y) - mousePos).Magnitude
+                    
+                    if distance < shortestDistance then
+                        shortestDistance = distance
+                        closestTarget = targetPart
+                    end
+                end
+            end
+        end
+        
+        if closestTarget then
+            Camera.CFrame = CFrame.new(Camera.CFrame.Position, closestTarget.Position)
+        end
+    end
+    
+    -- 2. Auto Skill Logic (Simulasi menekan tombol Q atau key skill umum)
+    if Settings.AutoSkill then
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+        end)
+    end
+
+    -- 3. ESP Rendering Loop
+    for player, esp in pairs(ESPObjects) do
+        local character = player.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+        
+        if character and humanoid and rootPart and humanoid.Health > 0 and player ~= LocalPlayer then
+            local vector, onScreen = Camera:WorldToScreenPoint(rootPart.Position)
+            
+            if onScreen then
+                local head = character:FindFirstChild("Head")
+                local headPos = head and Camera:WorldToScreenPoint(head.Position + Vector3.new(0, 0.5, 0)) or vector
+                local legPos = Camera:WorldToScreenPoint(rootPart.Position - Vector3.new(0, 3, 0))
+                local height = math.abs(headPos.Y - legPos.Y)
+                local width = height / 2
+                
+                -- ESP Box
+                if Settings.ESPBox then
+                    esp.Box.Size = Vector2.new(width, height)
+                    esp.Box.Position = Vector2.new(vector.X - width / 2, headPos.Y)
+                    esp.Box.Visible = true
+                else
+                    esp.Box.Visible = false
+                end
+                
+                -- ESP Name
+                if Settings.ESPName then
+                    esp.Name.Text = player.Name
+                    esp.Name.Position = Vector2.new(vector.X, headPos.Y - 18)
+                    esp.Name.Visible = true
+                else
+                    esp.Name.Visible = false
+                end
+                
+                -- ESP Line
+                if Settings.ESPLine then
+                    esp.Line.From = Vector2.new(Camera.ViewportSize.X / 2, Camera.ViewportSize.Y)
+                    esp.Line.To = Vector2.new(vector.X, headPos.Y)
+                    esp.Line.Visible = true
+                else
+                    esp.Line.Visible = false
+                end
+                
+                -- ESP Health Bar
+                if Settings.ESPHealth then
+                    local healthPercent = humanoid.Health / humanoid.MaxHealth
+                    local barHeight = height * healthPercent
+                    
+                    esp.HealthBarBg.Size = Vector2.new(3, height)
+                    esp.HealthBarBg.Position = Vector2.new(vector.X - width / 2 - 6, headPos.Y)
+                    esp.HealthBarBg.Visible = true
+                    
+                    esp.HealthBar.Size = Vector2.new(1, barHeight)
+                    esp.HealthBar.Position = Vector2.new(vector.X - width / 2 - 5, headPos.Y + (height - barHeight))
+                    esp.HealthBar.Visible = true
+                else
+                    esp.HealthBar.Visible = false
+                    esp.HealthBarBg.Visible = false
+                end
+            else
+                for _, obj in pairs(esp) do obj.Visible = false end
+            end
+        else
+            for _, obj in pairs(esp) do obj.Visible = false end
+        end
+    end
+end)
+
+OrionLib:Init()
